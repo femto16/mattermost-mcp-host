@@ -41,16 +41,37 @@ class LangGraphAgent:
             system_prompt: Optional system prompt to use for the agent
         """
         self.provider = provider
-        self.model = model or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
-        self.system_prompt_template = system_prompt or "You are a helpful AI assistant. Below is the context of the conversation for Mattermost: \n \n {context} \n\nCurrent date and time: {current_date_time}"
-        
-        # Initialize the LangChain LLM
-        self.llm = AzureChatOpenAI(
-            azure_deployment=self.model,
-            openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
-            azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT"),
-            api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
-        )
+        if self.provider == "azure":
+            self.model = model or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+            self.system_prompt_template = system_prompt or "You are a helpful AI assistant. Below is the context of the conversation for Mattermost: \n \n {context} \n\nCurrent date and time: {current_date_time}"
+
+            # Initialize the LangChain LLM
+            self.llm = AzureChatOpenAI(
+                azure_deployment=self.model,
+                openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+                azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT"),
+                api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
+            )
+        elif self.provider == "openai":
+            from langchain_openai import ChatOpenAI
+            self.model = model or os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+            self.system_prompt_template = system_prompt or "You are a helpful AI assistant. Below is the context of the conversation for Mattermost: \n \n {context} \n\nCurrent date and time: {current_date_time}"
+            
+            # Initialize the LangChain LLM
+            self.llm = ChatOpenAI(
+                model_name=self.model,
+                openai_api_key=os.environ.get("OPENAI_API_KEY"),
+                base_url=os.environ.get("OPENAI_API_BASE"),
+            )
+        elif self.provider == "google":
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            self.system_prompt_template = system_prompt or "You are a helpful AI assistant. Below is the context of the conversation for Mattermost: \n \n {context} \n\nCurrent date and time: {current_date_time}"
+            
+            self.llm = ChatGoogleGenerativeAI(
+                #model="gemini-2.5-flash",
+                model="gemini-2.0-flash-lite",
+                temperature=0.0,
+            )
         self.name = name
         
         # log the tools
