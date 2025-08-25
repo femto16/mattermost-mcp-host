@@ -117,7 +117,8 @@ class MattermostMCPIntegration:
             logger.info(f"Available teams: {teams}")
             if teams:  # Only try to get channel if teams exist
                 team_id = next(team['id'] for team in teams if team['name'] == config.MATTERMOST_TEAM_NAME)
-                channel = self.mattermost_client.get_channel_by_name(team_id, config.MATTERMOST_CHANNEL_NAME)
+                #channel = self.mattermost_client.get_channel_by_name(team_id, config.MATTERMOST_CHANNEL_NAME)
+                channel = self.mattermost_client.get_channel_by_name(config.MATTERMOST_TEAM_NAME, config.MATTERMOST_CHANNEL_NAME)
                 if not self.channel_id:
                     self.channel_id = channel['id']
                 logger.info(f"Using channel ID: {self.channel_id}")
