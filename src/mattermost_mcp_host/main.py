@@ -2,6 +2,7 @@ from mattermost_mcp_host.mcp_client import MCPClient
 from mattermost_mcp_host.mattermost_client import MattermostClient
 import mattermost_mcp_host.config as config
 from mattermost_mcp_host.agent import LangGraphAgent
+from mattermost_mcp_host.base_integration import BaseIntegration
 
 import sys
 import asyncio
@@ -39,7 +40,7 @@ def load_server_configs():
         logger.error(f"Error loading server configurations: {str(e)}")
         return {}
 
-class MattermostMCPIntegration:
+class MattermostMCPIntegration(BaseIntegration):
     def __init__(self):
         """Initialize the integration"""
         self.mcp_clients = {}  # Dictionary to store multiple MCP clients
