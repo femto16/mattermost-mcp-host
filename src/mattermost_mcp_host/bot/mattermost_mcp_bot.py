@@ -10,13 +10,13 @@ import logging
 import json
 from pathlib import Path
 
-# Add these imports
+# 以下のインポートを追加
 from typing import Dict, List, Any
 import traceback
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 
-# Configure logging
+# ロギング設定
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def load_server_configs():
-    """Load MCP server configurations from mcp-servers.json"""
+    """mcp-servers.jsonからMCPサーバー設定を読み込み"""
     try:
         config_path = Path(__file__).parent / "mcp-servers.json"
         with open(config_path) as f:
@@ -36,21 +36,20 @@ def load_server_configs():
 
 class MattermostMCPBot(MattermostBaseBot):
     def __init__(self):
-        """Initialize the integration"""
         super().__init__()
-        self.mcp_clients = {}  # Dictionary to store multiple MCP clients
+        self.mcp_clients = {}  # 複数のMCPクライアントを格納するdict
         self.command_prefix = config.COMMAND_PREFIX
         
     async def initialize(self):
-        """Initialize the mattermost client and connect to it via Websocket"""
+        """Mattermostクライアントを初期化し、Websocket経由で接続"""
         
         try:
-            # Load server configurations
+            # MCPサーバー設定のロード
             server_configs = load_server_configs()
             logger.info(f"Found {len(server_configs)} MCP servers in config")
             
             all_langchain_tools = []
-            # Initialize each MCP client
+            # 各MCPクライアントの初期化
             for server_name, server_config in server_configs.items():
                 try:
                     client = MCPClient(server_config=server_config)
@@ -62,7 +61,7 @@ class MattermostMCPBot(MattermostBaseBot):
                     logger.info(f"Connected to MCP server '{server_name}' via stdio")
                 except Exception as e:
                     logger.error(f"Failed to connect to MCP server '{server_name}': {str(e)}")
-                    # Continue with other servers even if one fails
+                    # 1つが失敗しても他のサーバーで続行
                     continue
             
             if not self.mcp_clients:
@@ -72,11 +71,11 @@ class MattermostMCPBot(MattermostBaseBot):
             logger.error(f"Failed to initialize MCP servers: {str(e)}")
             raise
         
-        # Set up agent tools
+        # エージェントツールのセットアップ
         logger.info(f"Setting up agent with {all_langchain_tools} tools")
         logger.info(f"Number of tools : {len(all_langchain_tools)}")
 
-        # Initialize agent based on configuration
+        # 設定に基づいたエージェントの初期化
         if config.AGENT_TYPE.lower() == 'simple':
             system_prompt = config.DEFAULT_SYSTEM_PROMPT
             name = 'simple'
@@ -95,49 +94,49 @@ class MattermostMCPBot(MattermostBaseBot):
         
     async def get_thread_history(self, root_id=None, channel_id=None) -> List[Dict[str, Any]]:
         """
-        Fetch conversation history from a Mattermost thread
+        Mattermostスレッドから会話履歴を取得
         
         Args:
-            root_id: ID of the root post in the thread
-            channel_id: Channel ID where the thread exists
+            root_id: スレッドのルート投稿のID
+            channel_id: スレッドが存在するチャンネルID
             
         Returns:
-            List of messages formatted for the LLM
+            LLM用にフォーマットされたメッセージのリスト
         """
         if not root_id or not channel_id:
-            # If there's no thread, return an empty history
+            # スレッドがない場合は空の履歴を返す
             return []
             
         try:
-            # Fetch posts in the thread
+            # スレッド内の投稿を取得
             posts_response = self.mattermost_client.driver.posts.get_thread(root_id)
             if not posts_response or 'posts' not in posts_response:
                 return []
                 
-            # Sort posts by create_at to maintain chronological order
+            # create_atで投稿をソートし、時系列順を維持
             posts = posts_response['posts']
             ordered_posts = sorted(posts.values(), key=lambda x: x['create_at'])
             
-            # Convert to LLM message format
+            # LLMメッセージ形式に変換
             messages = []
             bot_user_id = self.mattermost_client.driver.client.userid
             
             for post in ordered_posts:
-                # Skip the system messages
+                # システムメッセージはスキップ
                 if post.get('type') == 'system_join_channel':
                     continue
                     
                 content = post.get('message', '')
                 user_id = post.get('user_id')
                 
-                # Skip empty messages
+                # 空のメッセージはスキップ
                 if not content:
                     continue
                     
-                # Determine role based on sender
+                # 送信者に基づいてロールを決定
                 role = "assistant" if user_id == bot_user_id else "user"
                 
-                # Add to messages in LLM format
+                # LLM形式でメッセージに追加
                 messages.append({
                     "role": role,
                     "content": content
@@ -152,28 +151,28 @@ class MattermostMCPBot(MattermostBaseBot):
 
     async def handle_llm_request(self, channel_id: str, message: str, user_id: str, post_id: str = None, root_id: str = None):
         """
-        Handle a request to the LLM
+        LLMへのリクエストを処理
         
         Args:
-            channel_id: Channel ID
-            message: User's message text
-            user_id: User ID for tracking conversation history
-            post_id: Post ID for threading
+            channel_id: チャンネルID
+            message: ユーザーのメッセージテキスト
+            user_id: 会話履歴を追跡するためのユーザーID
+            post_id: スレッド化のための投稿ID
         """
         try:
-            # Fetch thread history - if post_id exists, it's the root of a new thread
+            # スレッド履歴の取得 - post_idが存在する場合、それが新しいスレッドのルート
             root_id = post_id if root_id is None or root_id == "" else root_id
             logger.info(f"Fetching thread history for root_id: {root_id}")
             
-            # Send a typing indicator
+            # タイピングインジケーターの送信
             # await self.send_response(channel_id, "Processing your request...", root_id)
             
-            # Collect available tools from all connected MCP servers
+            # 接続されているすべてのMCPサーバーから利用可能なツールを収集
             all_tools = {}
             for server_name, client in self.mcp_clients.items():
                 try:
                     server_tools = await client.list_tools()
-                    # Add server name prefix to tool names to avoid conflicts
+                    # 競合を避けるためにツール名にサーバー名のプレフィックスを追加
                     prefixed_tools = {
                         f"{server_name}.{name}": tool 
                         for name, tool in server_tools.items()
@@ -182,15 +181,15 @@ class MattermostMCPBot(MattermostBaseBot):
                 except Exception as e:
                     logger.error(f"Error getting tools from {server_name}: {str(e)}")
             
-            # Get thread history (will be empty for a new conversation)
+            # スレッド履歴の取得（新しい会話の場合は空）
             thread_history = await self.get_thread_history(root_id, channel_id)
             
-            # Format the message for the agent
-            # The agent expects a query, history, and user_id
+            # エージェント用のメッセージをフォーマット
+            # エージェントはクエリ、履歴、user_idを期待
             logger.info(f"Running agent with message: {message}")
             
-            # Run the agent with the user's message, thread history, and user ID
-            # Pass the thread history and user ID to the agent for proper memory management
+            # ユーザーのメッセージ、スレッド履歴、ユーザーIDでエージェントを実行
+            # 適切なメモリ管理のためにスレッド履歴とユーザーIDをエージェントに渡す
             result = await self.agent.run(
                 query=message,
                 history=thread_history,
@@ -204,12 +203,12 @@ class MattermostMCPBot(MattermostBaseBot):
                 }
             )
             
-            # Extract the final response from the agent's messages
+            # エージェントのメッセージから最終応答を抽出
             responses = self.agent.extract_response(result["messages"])
             logger.info(f"Agent response: {responses}")
             previous_agent_responses = [msg["content"] for msg in thread_history if msg["role"] == "assistant"]
             
-            # Filter out previous agent responses to avoid duplicates
+            # 重複を避けるために以前のエージェントの応答を除外
             for response in responses:
                 if response not in previous_agent_responses:
                     await self.send_response(channel_id, response or "No response generated", root_id)
@@ -220,15 +219,15 @@ class MattermostMCPBot(MattermostBaseBot):
             await self.send_response(channel_id, f"Error processing your request: {str(e)}", root_id)
 
     async def handle_message(self, post):
-        """Handle incoming messages from Mattermost"""
+        """Mattermostからの受信メッセージを処理"""
         try:
-            logger.info(f"Received post: {json.dumps(post, indent=2)}")  # Better logging
+            logger.info(f"Received post: {json.dumps(post, indent=2)}")  # より良いロギング
             
-            # Skip messages from the bot itself
+            # ボット自身からのメッセージはスキップ
             if post.get('user_id') == self.mattermost_client.driver.client.userid:
                 return
             
-            # Extract message data
+            # メッセージデータの抽出
             channel_id = post.get('channel_id')
             message = post.get('message', '')
             user_id = post.get('user_id')
@@ -237,21 +236,21 @@ class MattermostMCPBot(MattermostBaseBot):
             if root_id == '':
                 root_id = post_id
             
-            # Skip messages from other channels if a specific channel is configured
+            # 特定のチャンネルが設定されている場合、他のチャンネルからのメッセージはスキップ
             if self.channel_id and channel_id != self.channel_id:
                 logger.info(f'Received message from a different channel - {channel_id} than configured - {self.channel_id}')
-                # Only process direct messages to the bot and messages in the configured channel
+                # ボットへのダイレクトメッセージと設定されたチャンネルのメッセージのみを処理
                 # if not any(team_member.get('mention_keys', []) in message for team_member in self.mattermost_client.driver.users.get_user_teams(user_id)):
                 #     return
             
-            # Check if the message starts with the command prefix
+            # メッセージがコマンドプレフィックスで始まるかチェック
             if message.startswith(self.command_prefix):
-                # Handle MCP command
-                # Remove the command prefix before processing
+                # MCPコマンドの処理
+                # 処理前にコマンドプレフィックスを削除
                 message = message[len(self.command_prefix):].strip()
                 await self.handle_command(channel_id, message, user_id, post_id, root_id)
             else:
-                # Direct message to LLM
+                # LLMへのダイレクトメッセージ
                 await self.handle_llm_request(channel_id, message, user_id, post_id, root_id)
                 
         except Exception as e:
@@ -259,11 +258,11 @@ class MattermostMCPBot(MattermostBaseBot):
             logger.error(traceback.format_exc())
 
     async def handle_command(self, channel_id, message_text, user_id, post_id=None, root_id=None):
-        """Handle command messages from Mattermost"""
+        """Mattermostからのコマンドメッセージを処理"""
         try:
             root_id = post_id if root_id is None or root_id == "" else root_id
 
-            # Split the command text
+            # コマンドテキストの分割
             command_parts = message_text.split()
             
             if len(command_parts) < 1:
@@ -283,7 +282,7 @@ class MattermostMCPBot(MattermostBaseBot):
                 await self.send_response(channel_id, response, root_id)
                 return
             
-            # Check if the first argument is a server name
+            # 最初の引数がサーバー名かチェック
             server_name = command
             if server_name not in self.mcp_clients:
                 await self.send_response(
@@ -304,7 +303,7 @@ class MattermostMCPBot(MattermostBaseBot):
             client = self.mcp_clients[server_name]
             subcommand = command_parts[1]
             
-            # Process the subcommand
+            # サブコマンドの処理
             if subcommand == 'tools':
                 tools = await client.list_tools()
                 response = f"Available tools for {server_name}:\n"
@@ -322,20 +321,20 @@ class MattermostMCPBot(MattermostBaseBot):
                     return
                     
                 tool_name = command_parts[2]
-                # Handle tools with no parameters
+                # パラメータのないツールの処理
                 if len(command_parts) == 4:
                     tool_args = {}
                     logger.info(f"Calling tool {tool_name} with no parameters")
                 else:
-                    # Parse input as JSON if provided
+                    # JSONが提供されている場合はそれをパース
                     try:
-                        # Join remaining parts and parse as JSON
+                        # 残りの部分を結合してJSONとしてパース
                         params_str = " ".join(command_parts[3:]).replace("'", '')
                         
                         tool_args = json.loads(params_str)
                         logger.info(f"Calling tool {tool_name} with JSON inputs: {tool_args}")
                     except json.JSONDecodeError:
-                        # Fallback to old parameter_name value format
+                        # 古いparameter_name value形式へのフォールバック
                         parameter_name = command_parts[3]
                         parameter_value = " ".join(command_parts[4:]) if len(command_parts) > 4 else ""
                         tool_args = {parameter_name: parameter_value}
@@ -344,7 +343,7 @@ class MattermostMCPBot(MattermostBaseBot):
                 try:
                     result = await client.call_tool(tool_name, tool_args)
                     await self.send_response(channel_id, f"Tool result from {server_name}: {result}", root_id)
-                    # Send the result.text as markdown
+                    # result.textをマークダウンとして送信
                     if hasattr(result, 'content') and result.content:
                         if hasattr(result.content[0], 'text'):
                             await self.send_response(channel_id, result.content[0].text, root_id)
@@ -353,7 +352,7 @@ class MattermostMCPBot(MattermostBaseBot):
                     await self.send_response(channel_id, f"Error calling tool {tool_name} on {server_name}: {str(e)}", root_id)
                     
             elif subcommand == 'resources':
-                # Use the correct client instance
+                # 正しいクライアントインスタンスを使用
                 resources = await client.list_resources()
                 response = "Available MCP resources:\n"
                 for resource in resources:
@@ -361,7 +360,7 @@ class MattermostMCPBot(MattermostBaseBot):
                 await self.send_response(channel_id, response, root_id)
                 
             elif subcommand == 'prompts':
-                # Use the correct client instance
+                # 正しいクライアントインスタンスを使用
                 prompts = await client.list_prompts()
                 response = "Available MCP prompts:\n"
                 for prompt in prompts:
@@ -369,7 +368,7 @@ class MattermostMCPBot(MattermostBaseBot):
                 await self.send_response(channel_id, response, root_id)
                 
             else:
-                # Try to use LLM as a fallback
+                # フォールバックとしてLLMの使用を試行
                 await self.handle_llm_request(channel_id, message_text, user_id, root_id)
                 
         except Exception as e:
@@ -377,49 +376,49 @@ class MattermostMCPBot(MattermostBaseBot):
             await self.send_response(channel_id, f"Error processing command: {str(e)}", root_id)
 
     async def send_help_message(self, channel_id, post_id=None):
-        """Send a detailed help message explaining all available commands"""
+        """利用可能なすべてのコマンドを説明する詳細なヘルプメッセージを送信"""
         help_text = f"""
-                **MCP Client Help**
-                Use `{self.command_prefix}<command>` to interact with MCP servers.
+                **MCPクライアント ヘルプ**
+                `{self.command_prefix}<command>` を使用してMCPサーバーと対話します。
 
-                **Available Commands:**
-                1. `{self.command_prefix}help` - Show this help message
-                2. `{self.command_prefix}servers` - List all available MCP servers
+                **利用可能なコマンド:**
+                1. `{self.command_prefix}help` - このヘルプメッセージを表示
+                2. `{self.command_prefix}servers` - 利用可能なすべてのMCPサーバーを一覧表示
 
-                **Server-specific Commands:**
-                Use `{self.command_prefix}<server_name> <command>` to interact with a specific server.
+                **サーバー固有のコマンド:**
+                `{self.command_prefix}<server_name> <command>` を使用して特定のサーバーと対話します。
 
-                **Commands for each server:**
-                1. `{self.command_prefix}<server_name> tools` - List all available tools for the server
-                2. `{self.command_prefix}<server_name> call <tool_name> <parameter_name> <value>` - Call a specific tool
-                3. `{self.command_prefix}<server_name> resources` - List all available resources
-                4. `{self.command_prefix}<server_name> prompts` - List all available prompts
+                **各サーバーのコマンド:**
+                1. `{self.command_prefix}<server_name> tools` - サーバーで利用可能なすべてのツールを一覧表示
+                2. `{self.command_prefix}<server_name> call <tool_name> <parameter_name> <value>` - 特定のツールを呼び出し
+                3. `{self.command_prefix}<server_name> resources` - 利用可能なすべてのリソースを一覧表示
+                4. `{self.command_prefix}<server_name> prompts` - 利用可能なすべてのプロンプトを一覧表示
 
-                **Examples:**
-                • List servers:
+                **例:**
+                • サーバーの一覧表示:
                 `{self.command_prefix}servers`
-                • List tools for a server:
+                • サーバーのツール一覧表示:
                 `{self.command_prefix}simple-mcp-server tools`
-                • Call a tool:
+                • ツールの呼び出し:
                 `{self.command_prefix}simple-mcp-server call echo message "Hello World"`
 
-                **Note:**
-                - Tool parameters must be provided as name-value pairs
-                - For tools with multiple parameters, use JSON format:
+                **注:**
+                - ツールパラメータは名前と値のペアで指定する必要があります。
+                - 複数のパラメータを持つツールには、JSON形式を使用してください:
                 `{self.command_prefix}<server_name> call <tool_name> parameters '{{"param1": "value1", "param2": "value2"}}'`
                 
-                **Direct Interaction:**
-                You can also directly chat with the AI assistant which will use tools as needed.
+                **直接対話:**
+                必要に応じてツールを使用するAIアシスタントと直接チャットすることも可能です。
                 """
         await self.send_response(channel_id, help_text, post_id)
     
     async def send_tool_help(self, channel_id, server_name, tool_name, tool, post_id=None):
-        """Send help message for a specific tool"""
+        """特定のツールのヘルプメッセージを送信"""
         help_text = f"""
-                    **Tool Help: {tool_name}**
-                    Description: {tool.description}
+                    **ツールヘルプ: {tool_name}**
+                    説明: {tool.description}
 
-                    **Parameters:**
+                    **パラメータ:**
                     """
         if hasattr(tool, 'inputSchema') and tool.inputSchema:
             required = tool.inputSchema.get('required', [])
@@ -432,11 +431,11 @@ class MattermostMCPBot(MattermostBaseBot):
                 if param_desc:
                     help_text += f" - {param_desc}"
                 help_text += "\n"
-            help_text += "\n* = required parameter"
+            help_text += "\n* = 必須パラメータ"
         else:
-            help_text += "No parameters required"
+            help_text += "パラメータは不要です"
 
-        help_text += f"\n\n**Example:**\n`{self.command_prefix}{server_name} call {tool_name} "
+        help_text += f"\n\n**例:**\n`{self.command_prefix}{server_name} call {tool_name} "
         if hasattr(tool, 'inputSchema') and tool.inputSchema.get('required'):
             first_required = tool.inputSchema['required'][0]
             help_text += f"{first_required} <value>`"
