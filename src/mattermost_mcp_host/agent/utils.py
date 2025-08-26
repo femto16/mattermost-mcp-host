@@ -3,6 +3,7 @@ import logging
 import traceback
 from langchain.schema import BaseMessage, AIMessage, HumanMessage
 from langchain_core.messages import ToolMessage
+from mattermostdriver import Driver
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +104,11 @@ async def get_thread_history(driver, root_id=None, channel_id=None) -> List[Dict
         logger.error(f"Error fetching thread history: {str(e)}")
         logger.error(traceback.format_exc())
         return []
+    
+def add_reaction(driver: Driver, post_id, emoji_name="thumbsup") -> List[Dict[str, Any]]:
+    driver.reactions.create_reaction({
+        "user_id": driver.client.userid,
+        "post_id": post_id,
+        "emoji_name": emoji_name
+    })
+    return True

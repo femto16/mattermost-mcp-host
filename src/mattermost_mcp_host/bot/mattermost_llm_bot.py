@@ -1,6 +1,6 @@
 import mattermost_mcp_host.config as config
 from mattermost_mcp_host.bot.mattermost_base_bot import MattermostBaseBot
-from mattermost_mcp_host.agent.utils import get_final_response, get_thread_history
+from mattermost_mcp_host.agent.utils import get_final_response, get_thread_history, add_reaction
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -54,6 +54,9 @@ class MattermostLLMBot(MattermostBaseBot):
             
             # タイピングインジケーターの送信
             #await self.send_response(channel_id, PROCESSING_MESSAGE, root_id)
+            # リアクションの送信
+            await asyncio.sleep(1)
+            add_reaction(self.mattermost_client.driver, post_id, "robot")
             
             # スレッド履歴の取得（新しい会話の場合は空）
             thread_history = await get_thread_history(self.mattermost_client.driver, root_id, channel_id)
