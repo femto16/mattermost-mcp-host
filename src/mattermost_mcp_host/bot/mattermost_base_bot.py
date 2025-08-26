@@ -37,12 +37,11 @@ class MattermostBaseBot:
             logger.error(f"Failed to connect to Mattermost server: {str(e)}")
             raise
         
-        # チャンネルが存在することを確認するために、常にチャンネルIDを取得しようとする
+        # チャンネルが存在することを確認するために、チャンネルIDを取得
         try:
             teams = self.mattermost_client.get_teams()
             logger.info(f"Available teams: {teams}")
-            if teams:  # チームが存在する場合にのみチャンネルを取得しようとする
-                team_id = next(team['id'] for team in teams if team['name'] == config.MATTERMOST_TEAM_NAME)
+            if teams:
                 channel = self.mattermost_client.get_channel_by_name(config.MATTERMOST_TEAM_NAME, config.MATTERMOST_CHANNEL_NAME)
                 if not self.channel_id:
                     self.channel_id = channel['id']
