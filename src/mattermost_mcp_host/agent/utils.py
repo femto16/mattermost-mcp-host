@@ -1,12 +1,13 @@
 from typing import Dict, List, Any
 import logging
 import traceback
-from langchain.schema import BaseMessage, AIMessage
+from langchain.schema import BaseMessage, AIMessage, HumanMessage
+from langchain_core.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
 
 
-def get_final_response(messages: List[BaseMessage]) -> str:
+def get_final_response(messages: List[BaseMessage], last_user_message: str = None) -> str:
     """Extract the final response from the messages.
     
     Args:
@@ -17,16 +18,25 @@ def get_final_response(messages: List[BaseMessage]) -> str:
     """
     
     messages_to_send = []
+    tool_call_messages = []
     for msg in messages:
         if isinstance(msg, AIMessage):
-            if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs != {} and msg.content == "":
-                tool_calls = msg.additional_kwargs.get('tool_calls', [])
+            if hasattr(msg, 'lc_attributes') and msg.lc_attributes != {} and msg.content == "":
+                tool_calls = msg.lc_attributes.get('tool_calls', [])
                 for tool_call in tool_calls:
-                    if tool_call.get('type') == 'function':
-                        tool_call_message = f"Called tool: {tool_call.get('function', {}).get('name')} with arguments: {tool_call.get('function', {}).get('arguments')}"
-                    messages_to_send.append(tool_call_message)
+                    if tool_call.get('type') == 'tool_call':
+                        tool_call_message = f"Called tool: {tool_call.get('name')} with arguments: {tool_call.get('args')}"
+                    #messages_to_send.append(tool_call_message)
+                    tool_call_messages.append(tool_call_message)
             else:
                 messages_to_send.append(msg.content)
+        if isinstance(msg, ToolMessage):
+            tool_result_message = tool_call_messages[0] + f" -> {msg.content} ({msg.status})"
+            messages_to_send.append(tool_result_message)
+            tool_call_messages = tool_call_messages[1:]  # 先頭のtool_callメッセージを削除
+        elif isinstance(msg, HumanMessage) and msg.content == last_user_message:
+            # ユーザーメッセージだったらそれ以降のメッセージのみ抽出させるため、リセット
+            messages_to_send = []
             
     return messages_to_send
     # ai_messages = [msg for msg in messages if isinstance(msg, AIMessage)]

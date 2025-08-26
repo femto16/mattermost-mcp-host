@@ -17,6 +17,8 @@ import traceback
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 
+PROCESSING_MESSAGE = "Processing your request..."
+
 # ロギング設定
 logger = logging.getLogger(__name__)
 
@@ -46,51 +48,52 @@ class MattermostLLMBot(MattermostBaseBot):
             post_id: スレッド化のための投稿ID
         """
         try:
-            # スレッド履歴の取得 - post_idが存在する場合、それが新しいスレッドのルート
+            # スレッド履歴の取得 - root_idが空の場合、自身が新しいスレッドのルート
             root_id = post_id if root_id is None or root_id == "" else root_id
             logger.info(f"Fetching thread history for root_id: {root_id}")
             
             # タイピングインジケーターの送信
-            # await self.send_response(channel_id, "Processing your request...", root_id)
+            #await self.send_response(channel_id, PROCESSING_MESSAGE, root_id)
             
             # スレッド履歴の取得（新しい会話の場合は空）
             thread_history = await get_thread_history(self.mattermost_client.driver, root_id, channel_id)
             
             # エージェント用のメッセージをフォーマット
-            # エージェントはクエリ、履歴、user_idを期待
             logger.info(f"Running agent with message: {message}")
             metadata={
                 "channel_id": channel_id,
                 "team_name": config.MATTERMOST_TEAM_NAME.lower().replace(" ", "-"),
                 "channel_name": config.MATTERMOST_CHANNEL_NAME.lower().replace(" ", "-"),
             }
+            # システムプロンプトを追加
             messages = [SystemMessage(content=self.system_prompt.format(context=metadata, 
                                                                     current_date_time=datetime.now().isoformat()))]
+            # スレッド履歴を追加
             for msg in thread_history:
                 if msg["content"] == message:
                     continue
                 if msg["role"] == "user":
                     messages.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "assistant":
-                    if msg["content"] != "Processing your request...":
+                    if msg["content"] != PROCESSING_MESSAGE:
                         messages.append(AIMessage(content=msg["content"]))
-
-            # Add the current query as the latest message
+            
+            # ユーザークエリを追加
             messages.append(HumanMessage(content=message))
             
+            
+            # エージェント実行
             state = {"messages": messages}
             result = await self.agent.ainvoke(state)
 
             # エージェントのメッセージから最終応答を抽出
-            
-            responses = get_final_response(result["messages"])
+            responses = get_final_response(result["messages"], message)
             logger.info(f"Agent response: {responses}")
-            previous_agent_responses = [msg["content"] for msg in thread_history if msg["role"] == "assistant"]
+            #previous_agent_responses = [msg["content"] for msg in thread_history if msg["role"] == "assistant"]
             
-            # 重複を避けるために以前のエージェントの応答を除外
             for response in responses:
-                if response not in previous_agent_responses:
-                    await self.send_response(channel_id, response or "No response generated", root_id)
+                #if response not in previous_agent_responses: # 重複を避けるために以前のエージェントの応答を除外
+                await self.send_response(channel_id, response or "No response generated", root_id)
                 
         except Exception as e:
             logger.error(f"Error handling LLM request: {str(e)}")
