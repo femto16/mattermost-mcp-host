@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mattermost-mcp-server": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "E:\\repository\\langchain-prebuilt-agent",
+        "mcp_math.py"
+      ],
+      "type": "stdio"
+    }
+  }
+}

@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class MattermostBaseIntegration:
+class MattermostBaseBot:
     """Base class for Mattermost MCP integrations."""
     def __init__(self):
         self.mattermost_client = None
@@ -124,7 +124,7 @@ class MattermostBaseIntegration:
                 self.mattermost_client.close()
 
 async def start():
-    integration = MattermostBaseIntegration()
+    integration = MattermostBaseBot()
     await integration.run()
 
 def main():
