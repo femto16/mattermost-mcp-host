@@ -55,8 +55,11 @@ class MattermostClient:
 
             # Initialize websocket with the event handler
             self.driver.init_websocket(websocket_event_handler)
+            
+            # 接続が切れたらここに来る
+            
             await asyncio.sleep(1)  # Give the websocket time to initialize
-            self.websocket_client = self.driver.websocket.websocket
+            self.websocket_client = self.driver.websocket
             
             # Keep the websocket connection alive
             while self._running:
@@ -64,7 +67,7 @@ class MattermostClient:
                     logger.info("Reconnecting websocket...")
                     self.driver.init_websocket(websocket_event_handler)
                     await asyncio.sleep(1)
-                    self.websocket_client = self.driver.websocket.websocket
+                    self.websocket_client = self.driver.websocket
                 await asyncio.sleep(5)
             
         except Exception as e:
