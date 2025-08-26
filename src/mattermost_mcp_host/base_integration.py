@@ -79,8 +79,6 @@ class MattermostBaseIntegration:
             if root_id == '':
                 root_id = post_id
             
-            user = self.mattermost_client.driver.users.get_user(user_id)
-            
             # Skip messages from other channels if a specific channel is configured
             if self.channel_id and channel_id != self.channel_id:
                 logger.info(f'Received message from a different channel - {channel_id} than configured - {self.channel_id}')
@@ -88,6 +86,7 @@ class MattermostBaseIntegration:
                 # if not any(team_member.get('mention_keys', []) in message for team_member in self.mattermost_client.driver.users.get_user_teams(user_id)):
                 #     return
             
+            user = self.mattermost_client.driver.users.get_user(user_id)
             response = f"Hello, @{user['username']}!\nYour message: {message}"
             await self.send_response(channel_id, response, root_id)
                 

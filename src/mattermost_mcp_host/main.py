@@ -43,10 +43,10 @@ def load_server_configs():
 class MattermostMCPIntegration(MattermostBaseIntegration):
     def __init__(self):
         """Initialize the integration"""
+        super().__init__()
         self.mcp_clients = {}  # Dictionary to store multiple MCP clients
-        self.mattermost_client = None
-        self.channel_id = config.MATTERMOST_CHANNEL_ID
         self.command_prefix = config.COMMAND_PREFIX
+        
         
     async def initialize(self):
         """Initialize the mattermost client and connect to it via Websocket"""
@@ -97,43 +97,8 @@ class MattermostMCPIntegration(MattermostBaseIntegration):
                                     model=config.DEFAULT_MODEL, 
                                     tools=all_langchain_tools, 
                                     system_prompt=system_prompt)
-        
-        # Initialize Mattermost client
-        try:
-            self.mattermost_client = MattermostClient(
-                url=config.MATTERMOST_URL,
-                token=config.MATTERMOST_TOKEN,
-                scheme=config.MATTERMOST_SCHEME,
-                port=config.MATTERMOST_PORT
-            )
-            self.mattermost_client.connect()
-            logger.info("Connected to Mattermost server")
-        except Exception as e:
-            logger.error(f"Failed to connect to Mattermost server: {str(e)}")
-            raise
-        
-        # Always try to get channel ID to verify it exists
-        try:
-            teams = self.mattermost_client.get_teams()
-            logger.info(f"Available teams: {teams}")
-            if teams:  # Only try to get channel if teams exist
-                team_id = next(team['id'] for team in teams if team['name'] == config.MATTERMOST_TEAM_NAME)
-                #channel = self.mattermost_client.get_channel_by_name(team_id, config.MATTERMOST_CHANNEL_NAME)
-                channel = self.mattermost_client.get_channel_by_name(config.MATTERMOST_TEAM_NAME, config.MATTERMOST_CHANNEL_NAME)
-                if not self.channel_id:
-                    self.channel_id = channel['id']
-                logger.info(f"Using channel ID: {self.channel_id}")
-        except Exception as e:
-            logger.warning(f"Channel verification failed: {str(e)}. Using configured channel ID: {self.channel_id}")
-            # Don't raise the exception, continue with the configured channel ID
-        
-        if not self.channel_id:
-            raise ValueError("No channel ID available. Please configure MATTERMOST_CHANNEL_ID or ensure team/channel exist")
-        
-        # Set up message handler
-        self.mattermost_client.add_message_handler(self.handle_message)
-        await self.mattermost_client.start_websocket()
-        logger.info(f"Listening for {self.command_prefix} commands in channel {self.channel_id}")
+
+        await super().initialize()
         
     async def get_thread_history(self, root_id=None, channel_id=None) -> List[Dict[str, Any]]:
         """
@@ -275,7 +240,9 @@ class MattermostMCPIntegration(MattermostBaseIntegration):
             message = post.get('message', '')
             user_id = post.get('user_id')
             post_id = post.get('id') 
-            root_id = post.get('root_id')  # Get the root post ID for threading
+            root_id = post.get('root_id')
+            if root_id == '':
+                root_id = post_id
             
             # Skip messages from other channels if a specific channel is configured
             if self.channel_id and channel_id != self.channel_id:
@@ -484,32 +451,7 @@ class MattermostMCPIntegration(MattermostBaseIntegration):
             help_text += "<parameter_name> <value>`"
 
         await self.send_response(channel_id, help_text, post_id)
-                
-    async def send_response(self, channel_id, message, root_id=None):
-        """Send a response to the Mattermost channel"""
-        if channel_id is None:
-            logger.warning(f"Channel id is not sent, using default channel - {self.channel_id}")
-            channel_id = self.channel_id
-        self.mattermost_client.post_message(channel_id, message, root_id)
         
-    async def run(self):
-        """Run the integration"""
-        try:
-            await self.initialize()
-            
-            # Keep the application running
-            while True:
-                await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Shutting down...")
-        except Exception as e:
-            logger.error(f"Error in main loop: {str(e)}")
-        finally:
-            # Close clients in reverse order of initialization
-            if self.mattermost_client:
-                self.mattermost_client.close()
-            for client in self.mcp_clients.values():
-                await client.close()
 
 async def start():
     integration = MattermostMCPIntegration()
