@@ -35,6 +35,7 @@ def load_server_configs():
         return {}
 
 class MattermostMCPBot(MattermostBaseBot):
+    """Mattermost MCPボット(オリジナル)"""
     def __init__(self):
         super().__init__()
         self.mcp_clients = {}  # 複数のMCPクライアントを格納するdict
@@ -198,7 +199,7 @@ class MattermostMCPBot(MattermostBaseBot):
                     "channel_id": channel_id,
                     "team_name": config.MATTERMOST_TEAM_NAME.lower().replace(" ", "-"),
                     "channel_name": config.MATTERMOST_CHANNEL_NAME.lower().replace(" ", "-"),
-                    "github_username": config.GITHUB_USERNAME,
+                    #"github_username": config.GITHUB_USERNAME,
                     "github_repo": config.GITHUB_REPO_NAME,
                 }
             )
@@ -443,6 +444,28 @@ class MattermostMCPBot(MattermostBaseBot):
             help_text += "<parameter_name> <value>`"
 
         await self.send_response(channel_id, help_text, post_id)
+        
+    async def run(self):
+        """実行"""
+        try:
+            await self.initialize()
+            await self.start_websocket()
+            
+            # websocketが終了した
+            
+            # アプリケーションを実行し続ける
+            #while True:
+            #    await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+        except Exception as e:
+            logger.error(f"Error in main loop: {str(e)}")
+        finally:
+            # 初期化の逆の順序でクライアントを閉じる
+            if self.mattermost_client:
+                self.mattermost_client.close()
+            for client in self.mcp_clients.values():
+                await client.close()
         
 async def start():
     integration = MattermostMCPBot()

@@ -54,11 +54,16 @@ class MattermostBaseBot:
         if not self.channel_id:
             raise ValueError("No channel ID available. Please configure MATTERMOST_CHANNEL_ID or ensure team/channel exist")
         
-        
         # メッセージハンドラを設定
         self.mattermost_client.add_message_handler(self.handle_message)
+
+    async def start_websocket(self):
+        """MattermostのWebSocket接続を開始"""
         logger.info(f"Listening for commands in channel {self.channel_id}")
-        await self.mattermost_client.start_websocket()
+        if self.mattermost_client:
+            await self.mattermost_client.start_websocket()
+        else:
+            raise RuntimeError("Mattermost client is not initialized")
 
     async def handle_message(self, post):
         """Mattermostからの受信メッセージを処理"""
@@ -110,10 +115,13 @@ class MattermostBaseBot:
         """実行"""
         try:
             await self.initialize()
+            await self.start_websocket()
+            
+            # websocketが終了した
             
             # アプリケーションを実行し続ける
-            while True:
-                await asyncio.sleep(1)
+            #while True:
+            #    await asyncio.sleep(1)
         except KeyboardInterrupt:
             logger.info("Shutting down...")
         except Exception as e:
