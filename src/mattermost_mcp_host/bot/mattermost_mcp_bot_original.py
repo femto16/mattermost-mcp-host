@@ -34,7 +34,7 @@ def load_server_configs():
         logger.error(f"Error loading server configurations: {str(e)}")
         return {}
 
-class MattermostMCPBot(MattermostBaseBot):
+class MattermostMCPBotOriginal(MattermostBaseBot):
     """Mattermost MCPボット(オリジナル)"""
     def __init__(self):
         super().__init__()
@@ -468,7 +468,7 @@ class MattermostMCPBot(MattermostBaseBot):
                 await client.close()
         
 async def start():
-    integration = MattermostMCPBot()
+    integration = MattermostMCPBotOriginal()
     await integration.run()
 
 def main():

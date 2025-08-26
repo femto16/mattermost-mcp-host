@@ -33,9 +33,12 @@ LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
 # DEFAULT LLM 
 DEFAULT_PROVIDER = os.environ.get('DEFAULT_PROVIDER', 'azure') 
 DEFAULT_MODEL = os.environ.get('DEFAULT_MODEL', 'gpt-4o')
-AGENTS = ["simple", "github"]
+AGENTS = [
+    "simple",
+    #"github"
+]
 
-AGENT_TYPE = os.environ.get('AGENT_TYPE', 'github')  # TODO: Implement more agent types
+AGENT_TYPE = os.environ.get('AGENT_TYPE', 'simple')  # TODO: Implement more agent types
 
 # Provider-specific model defaults
 OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o')

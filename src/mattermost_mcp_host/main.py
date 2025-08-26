@@ -1,8 +1,8 @@
-from mattermost_mcp_host.bot.mattermost_mcp_bot import MattermostMCPBot
+from mattermost_mcp_host.bot.mattermost_mcp_bot_original import MattermostMCPBotOriginal
 import asyncio
 
 async def start():
-    integration = MattermostMCPBot()
+    integration = MattermostMCPBotOriginal()
     await integration.run()
 
 def main():
