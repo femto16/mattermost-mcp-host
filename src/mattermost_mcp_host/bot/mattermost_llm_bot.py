@@ -1,91 +1,40 @@
-from mattermost_mcp_host.mcp_client import MCPClient
-from mattermost_mcp_host.agent.utils import get_thread_history
 import mattermost_mcp_host.config as config
-from mattermost_mcp_host.agent import LangGraphAgent
 from mattermost_mcp_host.bot.mattermost_base_bot import MattermostBaseBot
+from mattermost_mcp_host.agent.utils import get_final_response, get_thread_history
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.prebuilt import create_react_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-import sys
 import asyncio
 import logging
 import json
-from pathlib import Path
+from datetime import datetime
 
 # 以下のインポートを追加
 import traceback
 
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+
 # ロギング設定
 logger = logging.getLogger(__name__)
 
-def load_server_configs():
-    """mcp-servers.jsonからMCPサーバー設定を読み込み"""
-    try:
-        config_path = Path(__file__).parent / "mcp-servers.json"
-        with open(config_path) as f:
-            config = json.load(f)
-            return config.get("mcpServers", {})
-    except Exception as e:
-        logger.error(f"Error loading server configurations: {str(e)}")
-        return {}
-
-class MattermostMCPBotOriginal(MattermostBaseBot):
-    """Mattermost MCPボット(オリジナル)"""
-    def __init__(self):
+class MattermostLLMBot(MattermostBaseBot):
+    """Mattermost LLMボット"""
+    def __init__(self, llm, tools=[]):
         super().__init__()
-        self.mcp_clients = {}  # 複数のMCPクライアントを格納するdict
         self.command_prefix = config.COMMAND_PREFIX
+        self.llm = llm
+        self.tools = tools
+        self.system_prompt = config.DEFAULT_SYSTEM_PROMPT
         
     async def initialize(self):
         """Mattermostクライアントを初期化し、Websocket経由で接続"""
-        
-        try:
-            # MCPサーバー設定のロード
-            server_configs = load_server_configs()
-            logger.info(f"Found {len(server_configs)} MCP servers in config")
-            
-            all_langchain_tools = []
-            # 各MCPクライアントの初期化
-            for server_name, server_config in server_configs.items():
-                try:
-                    client = MCPClient(server_config=server_config)
-
-                    await client.connect()
-                    self.mcp_clients[server_name] = client
-                    lanchain_tools = await client.convert_mcp_tools_to_langchain()
-                    all_langchain_tools.extend(lanchain_tools)
-                    logger.info(f"Connected to MCP server '{server_name}' via stdio")
-                except Exception as e:
-                    logger.error(f"Failed to connect to MCP server '{server_name}': {str(e)}")
-                    # 1つが失敗しても他のサーバーで続行
-                    continue
-            
-            if not self.mcp_clients:
-                raise ValueError("No MCP servers could be connected")
-
-        except Exception as e:
-            logger.error(f"Failed to initialize MCP servers: {str(e)}")
-            raise
-        
-        # エージェントツールのセットアップ
-        logger.info(f"Setting up agent with {all_langchain_tools} tools")
-        logger.info(f"Number of tools : {len(all_langchain_tools)}")
-
-        # 設定に基づいたエージェントの初期化
-        if config.AGENT_TYPE.lower() == 'simple':
-            system_prompt = config.DEFAULT_SYSTEM_PROMPT
-            name = 'simple'
-            
-        elif config.AGENT_TYPE.lower() == 'github':
-            name = 'github'
-            system_prompt = config.GITHUB_AGENT_SYSTEM_PROMPT
-
-        self.agent = LangGraphAgent(name=name, 
-                                    provider=config.DEFAULT_PROVIDER, 
-                                    model=config.DEFAULT_MODEL, 
-                                    tools=all_langchain_tools, 
-                                    system_prompt=system_prompt)
+        self.agent = create_react_agent(self.llm, self.tools)
 
         await super().initialize()
-        
+    
     async def handle_llm_request(self, channel_id: str, message: str, user_id: str, post_id: str = None, root_id: str = None):
         """
         LLMへのリクエストを処理
@@ -104,44 +53,37 @@ class MattermostMCPBotOriginal(MattermostBaseBot):
             # タイピングインジケーターの送信
             # await self.send_response(channel_id, "Processing your request...", root_id)
             
-            # 接続されているすべてのMCPサーバーから利用可能なツールを収集
-            all_tools = {}
-            for server_name, client in self.mcp_clients.items():
-                try:
-                    server_tools = await client.list_tools()
-                    # 競合を避けるためにツール名にサーバー名のプレフィックスを追加
-                    prefixed_tools = {
-                        f"{server_name}.{name}": tool 
-                        for name, tool in server_tools.items()
-                    }
-                    all_tools.update(prefixed_tools)
-                except Exception as e:
-                    logger.error(f"Error getting tools from {server_name}: {str(e)}")
-            
             # スレッド履歴の取得（新しい会話の場合は空）
             thread_history = await get_thread_history(self.mattermost_client.driver, root_id, channel_id)
             
             # エージェント用のメッセージをフォーマット
             # エージェントはクエリ、履歴、user_idを期待
             logger.info(f"Running agent with message: {message}")
+            metadata={
+                "channel_id": channel_id,
+                "team_name": config.MATTERMOST_TEAM_NAME.lower().replace(" ", "-"),
+                "channel_name": config.MATTERMOST_CHANNEL_NAME.lower().replace(" ", "-"),
+            }
+            messages = [SystemMessage(content=self.system_prompt.format(context=metadata, 
+                                                                    current_date_time=datetime.now().isoformat()))]
+            for msg in thread_history:
+                if msg["content"] == message:
+                    continue
+                if msg["role"] == "user":
+                    messages.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "assistant":
+                    if msg["content"] != "Processing your request...":
+                        messages.append(AIMessage(content=msg["content"]))
+
+            # Add the current query as the latest message
+            messages.append(HumanMessage(content=message))
             
-            # ユーザーのメッセージ、スレッド履歴、ユーザーIDでエージェントを実行
-            # 適切なメモリ管理のためにスレッド履歴とユーザーIDをエージェントに渡す
-            result = await self.agent.run(
-                query=message,
-                history=thread_history,
-                user_id=user_id,
-                metadata={
-                    "channel_id": channel_id,
-                    "team_name": config.MATTERMOST_TEAM_NAME.lower().replace(" ", "-"),
-                    "channel_name": config.MATTERMOST_CHANNEL_NAME.lower().replace(" ", "-"),
-                    #"github_username": config.GITHUB_USERNAME,
-                    "github_repo": config.GITHUB_REPO_NAME,
-                }
-            )
-            
+            state = {"messages": messages}
+            result = await self.agent.ainvoke(state)
+
             # エージェントのメッセージから最終応答を抽出
-            responses = self.agent.extract_response(result["messages"])
+            
+            responses = get_final_response(result["messages"])
             logger.info(f"Agent response: {responses}")
             previous_agent_responses = [msg["content"] for msg in thread_history if msg["role"] == "assistant"]
             
@@ -247,63 +189,6 @@ class MattermostMCPBotOriginal(MattermostBaseBot):
                 for name, tool in tools.items():
                     response += f"- {name}: {tool.description}\n"
                 await self.send_response(channel_id, response, root_id)
-                
-            elif subcommand == 'call':
-                if len(command_parts) < 4:
-                    await self.send_response(
-                        channel_id,
-                        f"Invalid call command. Use {self.command_prefix}{server_name} call <tool_name> [parameter_name] [value]",
-                        root_id
-                    )
-                    return
-                    
-                tool_name = command_parts[2]
-                # パラメータのないツールの処理
-                if len(command_parts) == 4:
-                    tool_args = {}
-                    logger.info(f"Calling tool {tool_name} with no parameters")
-                else:
-                    # JSONが提供されている場合はそれをパース
-                    try:
-                        # 残りの部分を結合してJSONとしてパース
-                        params_str = " ".join(command_parts[3:]).replace("'", '')
-                        
-                        tool_args = json.loads(params_str)
-                        logger.info(f"Calling tool {tool_name} with JSON inputs: {tool_args}")
-                    except json.JSONDecodeError:
-                        # 古いparameter_name value形式へのフォールバック
-                        parameter_name = command_parts[3]
-                        parameter_value = " ".join(command_parts[4:]) if len(command_parts) > 4 else ""
-                        tool_args = {parameter_name: parameter_value}
-                        logger.info(f"Calling tool {tool_name} with key-value inputs: {tool_args}")
-                
-                try:
-                    result = await client.call_tool(tool_name, tool_args)
-                    await self.send_response(channel_id, f"Tool result from {server_name}: {result}", root_id)
-                    # result.textをマークダウンとして送信
-                    if hasattr(result, 'content') and result.content:
-                        if hasattr(result.content[0], 'text'):
-                            await self.send_response(channel_id, result.content[0].text, root_id)
-                except Exception as e:
-                    logger.error(f"Error calling tool {tool_name} on {server_name}: {str(e)}")
-                    await self.send_response(channel_id, f"Error calling tool {tool_name} on {server_name}: {str(e)}", root_id)
-                    
-            elif subcommand == 'resources':
-                # 正しいクライアントインスタンスを使用
-                resources = await client.list_resources()
-                response = "Available MCP resources:\n"
-                for resource in resources:
-                    response += f"- {resource}\n"
-                await self.send_response(channel_id, response, root_id)
-                
-            elif subcommand == 'prompts':
-                # 正しいクライアントインスタンスを使用
-                prompts = await client.list_prompts()
-                response = "Available MCP prompts:\n"
-                for prompt in prompts:
-                    response += f"- {prompt}\n"
-                await self.send_response(channel_id, response, root_id)
-                
             else:
                 # フォールバックとしてLLMの使用を試行
                 await self.handle_llm_request(channel_id, message_text, user_id, root_id)
@@ -327,9 +212,6 @@ class MattermostMCPBotOriginal(MattermostBaseBot):
 
                 **各サーバーのコマンド:**
                 1. `{self.command_prefix}<server_name> tools` - サーバーで利用可能なすべてのツールを一覧表示
-                2. `{self.command_prefix}<server_name> call <tool_name> <parameter_name> <value>` - 特定のツールを呼び出し
-                3. `{self.command_prefix}<server_name> resources` - 利用可能なすべてのリソースを一覧表示
-                4. `{self.command_prefix}<server_name> prompts` - 利用可能なすべてのプロンプトを一覧表示
 
                 **例:**
                 • サーバーの一覧表示:
@@ -404,8 +286,28 @@ class MattermostMCPBotOriginal(MattermostBaseBot):
                 await client.close()
         
 async def start():
-    integration = MattermostMCPBotOriginal()
-    await integration.run()
+    server_params = StdioServerParameters(
+        command="uv",
+        args= [
+            "run",
+            "--directory",
+            "E:\\repository\\langchain-prebuilt-agent",
+            "mcp_math.py"
+        ]
+    )
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            # Initialize the connection
+            await session.initialize()
+
+            # Get tools
+            tools = await load_mcp_tools(session)
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash-lite",
+                temperature=0.0,
+            )
+            bot = MattermostLLMBot(llm, tools)
+            await bot.run()
 
 def main():
     asyncio.run(start())

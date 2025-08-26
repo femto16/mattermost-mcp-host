@@ -21,6 +21,8 @@ dependencies = [
     "pytest>=8.3.5",
     "python-dotenv>=1.0.1",
     "langchain-google-genai>=2.0.10",
+    "langchain-mcp>=0.2.1",
+    "langchain-mcp-adapters>=0.1.9",
 ]
 
 # Optional dependencies
