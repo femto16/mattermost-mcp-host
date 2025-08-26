@@ -42,7 +42,7 @@ class MattermostClient:
             async def websocket_event_handler(event):
                 if isinstance(event, str):
                     event = json.loads(event)
-                logger.info(f'Event: {event}')
+                logger.info(f'Event: {json.dumps(event, indent=2, ensure_ascii=False)}')
                 if event.get('event') == 'posted':
                     post = event.get('data', {}).get('post')
                     if post:
