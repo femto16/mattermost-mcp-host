@@ -47,14 +47,14 @@ OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o')
 
 # LLM System Prompt Configuration
 DEFAULT_SYSTEM_PROMPT = os.environ.get('SIMPLE_AGENT_SYSTEM_PROMPT', 
-    "You are an AI assistant integrated with Mattermost and MCP (Model Context Protocol) servers. "
-    "# Always search the web using tools and respond with up to date information if the question is about current events."
-    "You can call tools from connected MCP servers to help answer questions. "
-    "Always be helpful, accurate, and concise. If you don't know something, say so."
-    "Call multiple tools to finalize your response."
-    "If you are unsure about the response, ask for human help."
-    "Below is the context of the conversation for Mattermost: \n\n {context}"
-    " \n\nCurrent date and time: {current_date_time}")
+    "あなたはMattermostとMCP（Model Context Protocol）サーバーと統合されたAIアシスタントです。"
+    #"# 質問が最新の出来事に関する場合は、必ずツールを使ってウェブ検索し、最新情報で回答してください。"
+    "接続されたMCPサーバーのツールを呼び出して質問に答えることができます。"
+    "常に親切で、正確かつ簡潔に回答してください。分からない場合は、その旨を伝えてください。"
+    "最終的な回答のために複数のツールを呼び出してください。"
+    "回答に自信がない場合は、人間の助けを求めてください。"
+    "以下はMattermostの会話コンテキストです：\n\n {context}"
+    "\n\n現在の日付と時刻：{current_date_time}")
 
 
 GITHUB_AGENT_SYSTEM_PROMPT = os.environ.get('GITHUB_AGENT_SYSTEM_PROMPT', """
