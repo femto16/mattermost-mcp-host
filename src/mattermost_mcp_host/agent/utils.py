@@ -1,4 +1,5 @@
 from typing import Dict, List, Any
+import json
 import logging
 import traceback
 from langchain.schema import BaseMessage, AIMessage, HumanMessage
@@ -22,17 +23,21 @@ def get_final_response(messages: List[BaseMessage], last_user_message: str = Non
     tool_call_messages = []
     for msg in messages:
         if isinstance(msg, AIMessage):
+            # ツール呼び出しのnameとargsを抽出。resultはToolMessageで処理するため、一度tool_call_messageへ格納
             if hasattr(msg, 'lc_attributes') and msg.lc_attributes != {} and msg.content == "":
                 tool_calls = msg.lc_attributes.get('tool_calls', [])
                 for tool_call in tool_calls:
                     if tool_call.get('type') == 'tool_call':
-                        tool_call_message = f"Called tool: {tool_call.get('name')} with arguments: {tool_call.get('args')}"
-                    #messages_to_send.append(tool_call_message)
+                        tool_call_message = f"Called tool: **{tool_call.get('name')}**"
+                        if tool_call.get('args') != {}:
+                            tool_call_message +=  f"\n~~~{{.json linenums=false}}\n{json.dumps(tool_call.get('args'), indent=2, ensure_ascii=False)}\n~~~" 
                     tool_call_messages.append(tool_call_message)
             else:
+                # 通常のメッセージ
                 messages_to_send.append(msg.content)
         if isinstance(msg, ToolMessage):
-            tool_result_message = tool_call_messages[0] + f" -> {msg.content} ({msg.status})"
+            # ツールの結果を直前のツール呼び出しと組み合わせて追加
+            tool_result_message = tool_call_messages[0] + f"\nResult: **{msg.content}** ({msg.status})"
             messages_to_send.append(tool_result_message)
             tool_call_messages = tool_call_messages[1:]  # 先頭のtool_callメッセージを削除
         elif isinstance(msg, HumanMessage) and msg.content == last_user_message:
