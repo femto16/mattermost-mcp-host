@@ -10,7 +10,6 @@ import logging
 import json
 from datetime import datetime
 
-# 以下のインポートを追加
 import traceback
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
@@ -85,7 +84,8 @@ class MattermostLLMBot(MattermostBaseBot):
             
             # エージェント実行
             state = {"messages": messages}
-            result = await self.agent.ainvoke(state)
+            # await self.agent.ainvoke(state)をLM Studio経由で実行すると、asyncio周りで不安定
+            result = asyncio.run(self.agent.ainvoke(state)) # こちらの方が安定
 
             # エージェントのメッセージから最終応答を抽出
             responses = get_final_response(result["messages"], message)

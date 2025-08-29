@@ -6,9 +6,6 @@ import asyncio
 import logging
 import traceback
 
-import nest_asyncio
-nest_asyncio.apply()
-
 # ロギングの設定
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),

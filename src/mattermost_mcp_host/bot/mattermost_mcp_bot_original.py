@@ -4,13 +4,11 @@ import mattermost_mcp_host.config as config
 from mattermost_mcp_host.agent import LangGraphAgent
 from mattermost_mcp_host.bot.mattermost_base_bot import MattermostBaseBot
 
-import sys
 import asyncio
 import logging
 import json
 from pathlib import Path
 
-# 以下のインポートを追加
 import traceback
 
 # ロギング設定
