@@ -143,5 +143,5 @@ class MattermostClient:
         """Close the connection to the Mattermost server"""
         self._running = False
         if self.websocket_client:
-            self.websocket_client.close()
+            self.websocket_client.disconnect()
         self.driver.logout()
