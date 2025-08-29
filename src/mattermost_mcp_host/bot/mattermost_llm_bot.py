@@ -1,11 +1,9 @@
 import mattermost_mcp_host.config as config
 from mattermost_mcp_host.bot.mattermost_base_bot import MattermostBaseBot
 from mattermost_mcp_host.agent.utils import get_final_response, get_thread_history, add_reaction
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-from langchain_mcp_adapters.tools import load_mcp_tools
+from mattermost_mcp_host.agent.model import get_llm
 from langgraph.prebuilt import create_react_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 import asyncio
 import logging
@@ -32,10 +30,11 @@ class MattermostLLMBot(MattermostBaseBot):
         self.system_prompt = config.DEFAULT_SYSTEM_PROMPT
         
     async def initialize(self):
-        """Mattermostクライアントを初期化し、Websocket経由で接続"""
-        self.agent = create_react_agent(self.llm, self.tools)
-
+        """初期化"""
         await super().initialize()
+        # エージェント作成
+        self.agent = create_react_agent(self.llm, self.tools)
+        
     
     async def handle_llm_request(self, channel_id: str, message: str, user_id: str, post_id: str = None, root_id: str = None):
         """
@@ -48,15 +47,14 @@ class MattermostLLMBot(MattermostBaseBot):
             post_id: スレッド化のための投稿ID
         """
         try:
-            # スレッド履歴の取得 - root_idが空の場合、自身が新しいスレッドのルート
-            root_id = post_id if root_id is None or root_id == "" else root_id
-            logger.info(f"Fetching thread history for root_id: {root_id}")
-            
-            # タイピングインジケーターの送信
-            #await self.send_response(channel_id, PROCESSING_MESSAGE, root_id)
             # リアクションの送信
             await asyncio.sleep(1)
             add_reaction(self.mattermost_client.driver, post_id, "robot")
+            
+            # スレッド履歴の取得
+            # root_idが空の場合、自身が新しいスレッドのルート
+            root_id = post_id if root_id is None or root_id == "" else root_id
+            logger.info(f"Fetching thread history for root_id: {root_id}")
             
             # スレッド履歴の取得（新しい会話の場合は空）
             thread_history = await get_thread_history(self.mattermost_client.driver, root_id, channel_id)
@@ -285,35 +283,27 @@ class MattermostLLMBot(MattermostBaseBot):
         except Exception as e:
             logger.error(f"Error in main loop: {str(e)}")
         finally:
-            # 初期化の逆の順序でクライアントを閉じる
             if self.mattermost_client:
                 self.mattermost_client.close()
-            for client in self.mcp_clients.values():
-                await client.close()
         
 async def start():
-    server_params = StdioServerParameters(
-        command="uv",
-        args= [
-            "run",
-            "--directory",
-            "E:\\repository\\langchain-prebuilt-agent",
-            "mcp_math.py"
-        ]
-    )
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            # Initialize the connection
-            await session.initialize()
-
-            # Get tools
-            tools = await load_mcp_tools(session)
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash-lite",
-                temperature=0.0,
-            )
-            bot = MattermostLLMBot(llm, tools)
-            await bot.run()
+    params = {
+        "calculator": {
+            "command": "uv",
+            "args": [
+                "run",
+                "--directory",
+                "E:\\repository\\langchain-prebuilt-agent",
+                "mcp_math.py"
+            ],
+            "transport": "stdio",
+        },
+    }
+    client = MultiServerMCPClient(params)
+    tools = await client.get_tools()
+    llm = get_llm(config.DEFAULT_PROVIDER)
+    bot = MattermostLLMBot(llm, tools)
+    await bot.run()
 
 def main():
     asyncio.run(start())
